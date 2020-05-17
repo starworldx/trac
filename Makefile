@@ -402,6 +402,7 @@ define HELP_code
   [module=...]        module or package to check with pylint
   [templates=...]     list of Jinja2 templates to check
   [coffeescripts=...] list of coffee script files to compile
+  [jinjaopts=]        list of options for jinja checker
 
 endef
 export HELP_code
@@ -765,7 +766,7 @@ else
 endif
 
 copyright_re := "s/^($$PREFIX)(Copyright \(C\) 20[0-9][0-9])(-20[0-9][0-9])?$\
-    ( Edgewall Software)$$/\1\2-$(year)\4/g"
+    ( Edgewall Software\r?)$$/\1\2-$(year)\4/g"
 
 update-copyright:
 ifeq "$(year)" ""

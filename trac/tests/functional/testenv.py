@@ -204,12 +204,12 @@ class FunctionalTestEnvironment(object):
         self.get_trac_environment().config.touch()
 
     def set_config(self, *args):
-        """Calls trac-admin to get the value for the given option
+        """Calls trac-admin to set the value for the given option
         in `trac.ini`."""
         self._tracadmin('config', 'set', *args)
 
     def get_config(self, *args):
-        """Calls trac-admin to set the value for the given option
+        """Calls trac-admin to get the value for the given option
         in `trac.ini`."""
         return self._tracadmin('config', 'get', *args)
 
@@ -247,20 +247,14 @@ class FunctionalTestEnvironment(object):
 
     def start(self):
         """Starts the webserver, and waits for it to come up."""
-        if 'FIGLEAF' in os.environ:
-            exe = os.environ['FIGLEAF']
-            if ' ' in exe: # e.g. 'coverage run'
-                args = exe.split()
-            else:
-                args = [exe]
-        else:
-            args = [sys.executable]
+        args = [
+            sys.executable,
+            os.path.join(self.trac_src, 'trac', 'web', 'standalone.py')
+        ]
         options = ["--port=%s" % self.port, "-s", "--hostname=127.0.0.1",
                    "--basic-auth=trac,%s," % self.htpasswd]
         if 'TRAC_TEST_TRACD_OPTIONS' in os.environ:
             options += os.environ['TRAC_TEST_TRACD_OPTIONS'].split()
-        args.append(os.path.join(self.trac_src, 'trac', 'web',
-                                 'standalone.py'))
         server = Popen(args + options + [self.tracdir],
                        stdout=self.logfile, stderr=self.logfile,
                        close_fds=close_fds,

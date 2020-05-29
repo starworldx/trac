@@ -24,7 +24,6 @@
 
 __docformat__ = 'reStructuredText'
 
-from distutils.version import StrictVersion
 try:
     from docutils import nodes
     from docutils.core import publish_parts
@@ -32,9 +31,10 @@ try:
     from docutils.readers import standalone
     from docutils.writers import html4css1
     from docutils import __version__
-    has_docutils = True
 except ImportError:
     has_docutils = False
+else:
+    has_docutils = True
 
 from trac.api import ISystemInfoProvider
 from trac.core import *
@@ -44,22 +44,6 @@ from trac.util.translation import _
 from trac.wiki.api import WikiSystem
 from trac.wiki.formatter import WikiProcessor, Formatter, extract_link
 
-if has_docutils and StrictVersion(__version__) < StrictVersion('0.6'):
-    # Monkey-patch "raw" role handler in docutils to add a missing check
-    # See docutils bug #2845002 on SourceForge
-    def raw_role(role, rawtext, text, lineno, inliner, options={}, content=[]):
-        if not inliner.document.settings.raw_enabled:
-            msg = inliner.reporter.warning('raw (and derived) roles disabled')
-            prb = inliner.problematic(rawtext, rawtext, msg)
-            return [prb], [msg]
-        return _raw_role(role, rawtext, text, lineno, inliner, options,
-                         content)
-
-    from docutils.parsers.rst import roles
-    raw_role.options = roles.raw_role.options
-    _raw_role = roles.raw_role
-    roles.raw_role = raw_role
-    roles.register_canonical_role('raw', raw_role)
 
 if has_docutils:
     # Register "trac" role handler and directive
@@ -136,7 +120,7 @@ if has_docutils:
                   content=[]):
         if hasattr(inliner, 'trac'):
             env, context = inliner.trac
-            args  = text.split(" ", 1)
+            args = text.split(" ", 1)
             link = args[0]
             if len(args) == 2:
                 text = args[1]
@@ -173,7 +157,7 @@ if has_docutils:
         env, context = inliner.trac
         language = options.get('language')
         if not language:
-            args  = text.split(':', 1)
+            args = text.split(':', 1)
             language = args[0]
             if len(args) == 2:
                 text = args[1]
@@ -200,16 +184,16 @@ if has_docutils:
     # These are documented
     # at http://docutils.sourceforge.net/spec/howto/rst-directives.html.
     code_block_directive.arguments = (
-        1, # Number of required arguments.
-        0, # Number of optional arguments.
-        0) # True if final argument may contain whitespace.
+        1,  # Number of required arguments.
+        0,  # Number of optional arguments.
+        0)  # True if final argument may contain whitespace.
 
     # A mapping from option name to conversion function.
     code_block_role.options = code_block_directive.options = {
-        'language' :
-        rst.directives.unchanged # Return the text argument, unchanged
+        'language':
+            rst.directives.unchanged  # Return the text argument, unchanged
     }
-    code_block_directive.content = 1 # True if content is allowed.
+    code_block_directive.content = 1  # True if content is allowed.
     # Register the directive with docutils.
     rst.directives.register_directive('code-block', code_block_directive)
     rst.roles.register_local_role('code-block', code_block_role)
@@ -217,17 +201,7 @@ if has_docutils:
 
 class ReStructuredTextRenderer(Component):
     """HTML renderer for plain text in reStructuredText format."""
-    implements(ISystemInfoProvider, IHTMLPreviewRenderer)
-
-    can_render = False
-
-    def __init__(self):
-        if has_docutils:
-            if StrictVersion(__version__) < StrictVersion('0.3.9'):
-                self.log.warning('Docutils version >= %s required, '
-                                 '%s found', '0.3.9', __version__)
-            else:
-                self.can_render = True
+    implements(IHTMLPreviewRenderer, ISystemInfoProvider)
 
     # ISystemInfoProvider methods
 
@@ -238,8 +212,8 @@ class ReStructuredTextRenderer(Component):
     # IHTMLPreviewRenderer methods
 
     def get_quality_ratio(self, mimetype):
-        if self.can_render and mimetype in ('text/x-rst',
-                                            'text/prs.fallenstein.rst'):
+        if has_docutils and \
+                mimetype in ('text/x-rst', 'text/prs.fallenstein.rst'):
             return 8
         return 0
 
@@ -247,11 +221,14 @@ class ReStructuredTextRenderer(Component):
         # Minimize visual impact of errors
         class TracHTMLTranslator(html4css1.HTMLTranslator):
             """Specialized translator with unobtrusive error reporting
-            and some extra security features"""
+            and some extra security features.
+            """
+
             def __init__(self, *args, **kwargs):
                 self._render_unsafe_content = wikisys.render_unsafe_content
                 self._safe_schemes = set(wikisys.safe_schemes)
                 html4css1.HTMLTranslator.__init__(self, *args, **kwargs)
+
             def visit_system_message(self, node):
                 paragraph = node.children.pop(0)
                 message = escape(paragraph.astext()) if paragraph else ''
@@ -265,20 +242,25 @@ class ReStructuredTextRenderer(Component):
                     span = ('<span class="system-message" title="%s">?</span>'
                             % message)
                 self.body.append(span)
+
             def depart_system_message(self, node):
                 pass
+
             def visit_image(self, node):
                 html4css1.HTMLTranslator.visit_image(self, node)
                 uri = node.attributes.get('uri')
                 if not wikisys.is_safe_origin(uri, context.req):
                     self.body[-1] = self.body[-1].replace(
                         '<img ', '<img crossorigin="anonymous" ')
+
             def visit_reference(self, node):
                 if self._is_safe_uri(node.get('refuri')):
                     html4css1.HTMLTranslator.visit_reference(self, node)
+
             def depart_reference(self, node):
                 if self._is_safe_uri(node.get('refuri')):
                     html4css1.HTMLTranslator.depart_reference(self, node)
+
             def _is_safe_uri(self, uri):
                 if self._render_unsafe_content or not uri:
                     return True

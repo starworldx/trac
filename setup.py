@@ -52,7 +52,7 @@ def readme():
 
 setup(
     name = 'Trac',
-    version = '1.5.1',
+    version = '1.5.2',
     description = 'Integrated SCM, wiki, issue tracker and project environment',
     long_description = readme(),
     author = 'Edgewall Software',
@@ -104,7 +104,7 @@ setup(
         'psycopg2': ['psycopg2 >= 2.0'],
         'psycopg2-binary': ['psycopg2-binary'],
         'pygments': ['Pygments>=1.0'],
-        'rest': ['docutils>=0.3.9'],
+        'rest': ['docutils>=0.6'],
         'textile': ['textile>=2.0'],
     },
 

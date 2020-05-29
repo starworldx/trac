@@ -1,25 +1,21 @@
-Release Notes for Trac 1.4 'Jinja2' Release
+Release Notes for Trac 1.6 'Py3' Release
 ===========================================
-(Not yet released)
+Not yet released
 
 Highlights
 ----------
-* Jinja2 templating engine
-* TracAdmin command for converting databases
-* Restyled wiki
-* Custom navigation items for main and meta navigation
 
 Detailed User Visible Changes
 -----------------------------
 
-A detailed view of the API changes since 1.2.x can be found in
-https://trac.edgewall.org/wiki/TracDev/ReleaseNotes/1.2
+A detailed view of the changes since 1.4.x can be found in
+https://trac.edgewall.org/wiki/TracDev/ReleaseNotes/1.6
 
 Developer-visible changes
 -------------------------
 
-A detailed view of the API changes since 1.2.x can be found in
-https://trac.edgewall.org/wiki/TracDev/ApiChanges/1.2
+A detailed view of the API changes since 1.4.x can be found in
+https://trac.edgewall.org/wiki/TracDev/ApiChanges/1.6
 
 Acknowledgements
 ----------------

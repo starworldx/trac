@@ -209,10 +209,9 @@
           #   set change_date = change['comment_history'][latest]['date']
           <div class="${classes('change',
                       'trac-new' if change_date is greaterthan(start_time) and
-                      'attachment' not in change.fields)}"
-               id="${'trac-change-%d-%d' % (
-                   change.cnum,
-                   to_utimestamp(change.date)) if 'cnum' in change}">
+                      'attachment' not in change.fields)}"${
+             {'id': 'trac-change-%d-%d' % (change.cnum, to_utimestamp(change.date))
+                    if 'cnum' in change}|htmlattr}>
             # include 'ticket_change.html'
           </div>
           # endfor
@@ -492,8 +491,7 @@
         ## Add comment
 
         # if ticket.exists and can_append:
-        <div id="trac-add-comment"
-             class="${classes('field', 'trac-scroll' if preview_mode)}">
+        <div id="trac-add-comment" class="field">
           <h3 class="foldable" id="edit">${_("Add Comment")}</h3>
           <div>
 

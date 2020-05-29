@@ -122,6 +122,55 @@ class TicketModuleTestCase(unittest.TestCase):
         """Helper for inserting a ticket into the database"""
         return insert_ticket(self.env, **kw)
 
+    def _prepare_newticket_post_request(self):
+        self.env.config.set('ticket', 'default_component', 'component1')
+        self.env.config.set('ticket', 'default_milestone', 'milestone1')
+        req = MockRequest(self.env, method='GET', path_info='/newticket',
+                          authname='user1')
+
+        mod = TicketModule(self.env)
+        self.assertTrue(mod.match_request(req))
+        data = mod.process_request(req)[1]
+
+        fields = {'field_%s' % f['name']: f.get('value', '')
+                  for f in data['fields']}
+        fields['field_summary'] = 'The summary'
+        req = MockRequest(
+            self.env, method='POST', path_info='/newticket', authname='user1',
+            args=dict(action=data['action'], submit='Create ticket', **fields)
+        )
+        return req
+
+    def _prepare_ticket_post_request(self, tid):
+        path_info = '/ticket/%s' % tid
+        req = MockRequest(self.env, method='GET', path_info=path_info,
+                          authname='user1')
+
+        mod = TicketModule(self.env)
+        self.assertTrue(mod.match_request(req))
+        data = mod.process_request(req)[1]
+
+        start_time = to_utimestamp(data['start_time'])
+        ticket = data['ticket']
+        fields = {'field_%s' % f: v for f, v in ticket.values.iteritems()}
+        req = MockRequest(
+            self.env, method='POST', path_info=path_info, authname='user1',
+            args=dict(action=data['action'], submit='Submit changes',
+                      comment='', replyto='', start_time=start_time,
+                      view_time=start_time, **fields)
+        )
+        return req
+
+    def _process_ticket_request(self, req):
+        mod = TicketModule(self.env)
+        self.assertTrue(mod.match_request(req))
+        try:
+            data = mod.process_request(req)[1]
+        except RequestDone:
+            return None
+        else:
+            return data
+
     def _get_field_by_name(self, data, name):
         for field in data['fields']:
             if field['name'] == name:
@@ -195,6 +244,36 @@ class TicketModuleTestCase(unittest.TestCase):
         data = self.ticket_module.process_request(req)[1]
         self.assertNotIn(u'title="Released ',
                          unicode(version_field(data)['rendered']))
+
+    def test_comment_save(self):
+        req = self._prepare_newticket_post_request()
+        self._process_ticket_request(req)
+
+        req = self._prepare_ticket_post_request(1)
+        req.args['comment'] = 'The comment'
+        data = self._process_ticket_request(req)
+
+        self.assertIsNone(data)
+        self.assertEqual([], req.chrome['warnings'])
+        self.assertEqual(['303 See Other'], req.status_sent)
+        self.assertEqual('http://example.org/trac.cgi/ticket/1#comment:1',
+                         req.headers_sent['Location'])
+        self.assertEqual(1, len(Ticket(self.env, 1).get_changelog()))
+
+    def test_whitespace_comment_not_saved(self):
+        req = self._prepare_newticket_post_request()
+        self._process_ticket_request(req)
+
+        req = self._prepare_ticket_post_request(1)
+        req.args['comment'] = u'\u200b\t\t\n\n\n\n\u200b'
+        data = self._process_ticket_request(req)
+
+        self.assertIsNone(data)
+        self.assertEqual([], req.chrome['warnings'])
+        self.assertEqual(['303 See Other'], req.status_sent)
+        self.assertEqual('http://example.org/trac.cgi/ticket/1',
+                         req.headers_sent['Location'])
+        self.assertEqual(0, len(Ticket(self.env, 1).get_changelog()))
 
     def test_quoted_reply_author_is_obfuscated(self):
         """Reply-to author is obfuscated in a quoted reply."""
@@ -954,34 +1033,10 @@ class TicketModuleTestCase(unittest.TestCase):
                   'start_time': when_ts, 'view_time': when_ts})
         self.assertEqual('2009-02-13T23:31:30Z', old_values['due'])
 
-    def _prepare_newticket_request(self):
-        self.env.config.set('ticket', 'default_component', 'component1')
-        self.env.config.set('ticket', 'default_milestone', 'milestone1')
-        req = MockRequest(self.env, method='GET', path_info='/newticket',
-                          authname='user1')
-
-        mod = TicketModule(self.env)
-        self.assertTrue(mod.match_request(req))
-        data = mod.process_request(req)[1]
-
-        fields = {'field_%s' % f['name']: f.get('value', '')
-                  for f in data['fields']}
-        fields['field_summary'] = 'The summary'
-        req = MockRequest(
-            self.env, method='POST', path_info='/newticket', authname='user1',
-            args=dict(action=data['action'],
-                      submit='Create ticket',
-                      **fields)
-        )
-        return req
-
     def test_newticket_ticket_validate_comment_not_called(self):
-        req = self._prepare_newticket_request()
+        req = self._prepare_newticket_post_request()
 
-        mod = TicketModule(self.env)
-        self.assertTrue(mod.match_request(req))
-        with self.assertRaises(RequestDone):
-            mod.process_request(req)
+        self._process_ticket_request(req)
 
         self.assertEqual([], req.chrome['warnings'])
         self.assertEqual(['303 See Other'], req.status_sent)
@@ -990,6 +1045,94 @@ class TicketModuleTestCase(unittest.TestCase):
         tm = self.mock_ticket_manipulator(self.env)
         self.assertEqual(0, tm.validate_comment_called)
         self.assertEqual(1, tm.validate_ticket_called)
+
+    def _test_custom_field_with_ticketlink_query_option(self, ticketlink_query):
+        ticket_custom = self.env.config['ticket-custom']
+        ticket_custom.set('select1', 'select')
+        ticket_custom.set('select1.options', 'one|two')
+        if ticketlink_query:
+            ticket_custom.set('select1.ticketlink_query', ticketlink_query)
+        ticket_custom.set('checkbox1', 'checkbox')
+        if ticketlink_query:
+            ticket_custom.set('checkbox1.ticketlink_query', ticketlink_query)
+        ticket_custom.set('radio1', 'radio')
+        ticket_custom.set('radio1.options', '1|2')
+        if ticketlink_query:
+            ticket_custom.set('radio1.ticketlink_query', ticketlink_query)
+        ticket_custom.set('text1', 'text')
+        ticket_custom.set('text1.format', 'plain')
+        if ticketlink_query:
+            ticket_custom.set('text1.ticketlink_query', ticketlink_query)
+        ticket_custom.set('text2', 'text')
+        ticket_custom.set('text2.format', 'wiki')
+        if ticketlink_query:
+            ticket_custom.set('text2.ticketlink_query', ticketlink_query)
+        ticket_custom.set('text3', 'text')
+        ticket_custom.set('text3.format', 'reference')
+        if ticketlink_query:
+            ticket_custom.set('text3.ticketlink_query', ticketlink_query)
+        ticket_custom.set('text4', 'text')
+        ticket_custom.set('text4.format', 'list')
+        if ticketlink_query:
+            ticket_custom.set('text4.ticketlink_query', ticketlink_query)
+        ticket_custom.set('textarea1', 'textarea')
+        if ticketlink_query:
+            ticket_custom.set('textarea1.ticketlink_query', ticketlink_query)
+        ticket_custom.set('time1', 'time')
+        if ticketlink_query:
+            ticket_custom.set('time1.ticketlink_query', ticketlink_query)
+
+        ticket = self._insert_ticket(
+            reporter='reporter', summary='the summary', status='new',
+            select1='two', checkbox1='1', radio1='2', text1='word1',
+            text2='WordTwo', text3='word2', text4='word3 word4',
+            textarea1='word5\nword6',
+            time1=datetime(2010, 3, 14, 22, 30, 29, 234567, utc))
+        req = MockRequest(self.env, method='GET', path_info='/ticket/1')
+
+        self.assertTrue(self.ticket_module.match_request(req))
+        data = self.ticket_module.process_request(req)[1]
+
+        base = '<a href="/trac.cgi/query%s&amp;' % \
+               (ticketlink_query if ticketlink_query
+                else self.env.config.get('query', 'ticketlink_query'))
+        field = self._get_field_by_name(data, 'select1')
+        self.assertEqual('%sselect1=two">two</a>' % base,
+                         unicode(field['rendered']))
+        field = self._get_field_by_name(data, 'checkbox1')
+        self.assertEqual('%scheckbox1=1">yes</a>' % base,
+                         unicode(field['rendered']))
+        field = self._get_field_by_name(data, 'radio1')
+        self.assertEqual('%sradio1=2">2</a>' % base,
+                         unicode(field['rendered']))
+        field = self._get_field_by_name(data, 'text1')
+        self.assertNotIn('rendered', field)
+        field = self._get_field_by_name(data, 'text2')
+        self.assertNotIn('rendered', field)
+        field = self._get_field_by_name(data, 'text3')
+        self.assertEqual('%stext3=word2">word2</a>' % base,
+                         unicode(field['rendered']))
+        field = self._get_field_by_name(data, 'text4')
+        self.assertEqual('%(base)stext4=~word3">word3</a> '
+                         '%(base)stext4=~word4">word4</a>' % {'base': base},
+                         unicode(field['rendered']))
+        field = self._get_field_by_name(data, 'textarea1')
+        self.assertNotIn('rendered', field)
+        field = self._get_field_by_name(data, 'time1')
+        self.assertNotIn('rendered', field)
+
+    def test_custom_field_custom_ticketlink_query_option(self):
+        """Custom fields with default ticketlink_query."""
+        ticketlink_query = '?status=accepted'
+        self._test_custom_field_with_ticketlink_query_option(ticketlink_query)
+
+    def test_custom_field_custom_ticketlink_query_option_none(self):
+        """Custom fields with custom ticketlink_query."""
+        self._test_custom_field_with_ticketlink_query_option(None)
+
+    def test_custom_field_custom_ticketlink_query_option_empty(self):
+        """Custom fields with custom ticketlink_query."""
+        self._test_custom_field_with_ticketlink_query_option('')
 
     def _reset_ticket_fields(self):
         tktsys = TicketSystem(self.env)
@@ -1001,7 +1144,7 @@ class CustomFieldMaxSizeTestCase(unittest.TestCase):
     """Tests for [ticket-custom] max_size attribute."""
 
     def setUp(self):
-        self.env = EnvironmentStub()
+        self.env = EnvironmentStub(default_data=True)
         self.ticket_module = TicketModule(self.env)
 
     def tearDown(self):
@@ -1010,13 +1153,14 @@ class CustomFieldMaxSizeTestCase(unittest.TestCase):
     def _setup_env_and_req(self, max_size, field_value):
         self.env.config.set('ticket-custom', 'text1', 'text')
         self.env.config.set('ticket-custom', 'text1.max_size', max_size)
-        ticket = insert_ticket(self.env, summary='summary', text1='init')
+        ticket = insert_ticket(self.env, text1='init')
         change_time = Ticket(self.env, ticket.id)['changetime']
         view_time = str(to_utimestamp(change_time))
         req = MockRequest(
             self.env, method='POST', path_info='/ticket/%d' % ticket.id,
             args={'submit': 'Submit changes', 'field_text1': field_value,
-                  'action': 'leave', 'view_time': view_time})
+                  'action': 'leave', 'view_time': view_time,
+                  'start_time': view_time})
         return req
 
     def test_ticket_custom_field_greater_than_max_size(self):

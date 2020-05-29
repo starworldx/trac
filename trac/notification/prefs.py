@@ -48,7 +48,6 @@ class NotificationPreferences(Component):
             'add-rule': self._add_rule,
             'delete-rule': self._delete_rule,
             'move-rule': self._move_rule,
-            'set-format': self._set_format,
             'replace': self._replace_rules,
         }
 
@@ -72,6 +71,7 @@ class NotificationPreferences(Component):
         subscribers = []
         formatters = {}
         selected_format = {}
+        default_format = {}
         defaults = []
 
         for i in self.subscribers:
@@ -86,10 +86,12 @@ class NotificationPreferences(Component):
                 defaults.extend(i.default_subscriptions())
         desc_map = dict((s['class'], s['description']) for s in subscribers)
 
+        ns = NotificationSystem(self.env)
         for t in self._iter_transports():
             rules[t] = []
             formatters[t] = self._get_supported_styles(t)
             selected_format[t] = req.session.get('notification.format.%s' % t)
+            default_format[t] = ns.get_default_format(t)
             for r in self._iter_rules(req, t):
                 description = desc_map.get(r['class'])
                 if description:
@@ -108,12 +110,17 @@ class NotificationPreferences(Component):
                 default_rules[dist].append({'adverb': adverb,
                                             'description': description})
 
-        data = {'rules': rules, 'subscribers': subscribers,
-                'formatters': formatters, 'selected_format': selected_format,
-                'default_rules': default_rules,
-                'adverbs': ('always', 'never'),
-                'adverb_labels': {'always': _("Notify"),
-                                  'never': _("Never notify")}}
+        data = {
+            'rules': rules,
+            'subscribers': subscribers,
+            'formatters': formatters,
+            'selected_format': selected_format,
+            'default_format': default_format,
+            'default_rules': default_rules,
+            'adverbs': ('always', 'never'),
+            'adverb_labels': {'always': _("Notify"),
+                              'never': _("Never notify")}
+        }
         Chrome(self.env).add_jquery_ui(req)
         return 'prefs_notification.html', dict(data=data)
 
@@ -150,13 +157,6 @@ class NotificationPreferences(Component):
                 session = req.session
                 Subscription.move(self.env, rule_id, priority, session.sid,
                                   session.authenticated)
-
-    def _set_format(self, arg, req):
-        format_ = req.args.getfirst('format-%s' % arg)
-        format_ = self._normalize_format(format_, arg)
-        req.session.set('notification.format.%s' % arg, format_, '')
-        Subscription.update_format_by_distributor_and_sid(
-            self.env, arg, req.session.sid, req.session.authenticated, format_)
 
     def _replace_rules(self, arg, req):
         subscriptions = []

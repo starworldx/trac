@@ -105,7 +105,6 @@
     # endblock head
   </head>
   <body>
-    # set prefpanel_has_own_submit = true
     # block prefpanel
     <h2 id="subscriptions-section">${_("Subscriptions")}</h2>
     #   for distributor, rules in data['rules'].iteritems():
@@ -116,22 +115,15 @@
           <label for="format-${distributor}">${_("Format:")}</label>
           <select id="format-${distributor}" name="format-${distributor}"
                   class="subscription-format">
-            <option value="">${_("Default format")}</option>
+            # set default_format = data['default_format'][distributor]
+            <option value="">${_("Default: %(default)s",
+                                 default=default_format)}</option>
             # for f in data['formatters'][distributor]:
             <option${{'selected': f == data['selected_format'][distributor]
                      }|htmlattr} value="${f}">${f}</option>
             # endfor
           </select>
         </p>
-        <noscript>
-          <p>
-            &nbsp;
-            <button class="trac-button" type="submit" name="action"
-                    title="${_('Save format')}"
-                    value="set-format_${distributor}"
-                    >${_("Save")}</button>
-          </p>
-        </noscript>
         <p class="hint">
           # trans distributor
 
@@ -301,6 +293,15 @@
         </p>
       </div>
       #   endif
+    </div>
+    #   endfor
+    <p class="trac-noscript">
+      <input type="hidden" name="action" value="replace_all" />
+    </p>
+    # endblock prefpanel
+
+    <div>
+      # block prefpanelhelp
       #   call(note, page) jmacros.wikihelp('TracNotification'):
       #     trans note, page
 
@@ -308,11 +309,8 @@
 
       #     endtrans
       #   endcall
+      # endblock
     </div>
-    #   endfor
-    <p class="trac-noscript">
-      <button class="trac-button" type="submit" name="action" value="replace_all">${_("Save changes")}</button>
-    </p>
-    # endblock prefpanel
+
   </body>
 </html>

@@ -33,7 +33,7 @@ from trac.resource import (
 )
 from trac.search import ISearchSource, search_to_sql, shorten_result
 from trac.ticket import model
-from trac.ticket.api import TicketSystem, ITicketManipulator
+from trac.ticket.api import TicketSystem, ITicketManipulator, TicketFieldList
 from trac.ticket.notification import TicketChangeEvent
 from trac.ticket.roadmap import group_milestones
 from trac.timeline.api import ITimelineEventProvider
@@ -533,8 +533,6 @@ class TicketModule(Component):
         fields = self._prepare_fields(req, ticket)
 
         data['fields'] = fields
-        data['fields_map'] = {field['name']: i
-                              for i, field in enumerate(fields)}
 
         if req.is_xhr:
             data['preview_mode'] = True
@@ -1456,12 +1454,14 @@ class TicketModule(Component):
         for key in field_changes:
             ticket[key] = field_changes[key]['new']
 
-    def _query_link(self, req, name, value, text=None, class_=None):
+    def _query_link(self, req, name, value, text=None, class_=None, query=None):
         """Return a link to /query with the appropriate name and value"""
         from trac.ticket.query import QueryModule
         if not self.env.is_component_enabled(QueryModule):
             return text or value
-        args = arg_list_to_args(parse_arg_list(self.ticketlink_query))
+        if query is None:
+            query = self.ticketlink_query
+        args = arg_list_to_args(parse_arg_list(query))
         args[name] = value
         if name == 'resolution':
             args['status'] = 'closed'
@@ -1469,13 +1469,15 @@ class TicketModule(Component):
             return tag.a(text or value, href=req.href.query(args),
                          class_=class_)
 
-    def _query_link_words(self, context, name, value):
+    def _query_link_words(self, context, name, value, query=None):
         """Splits a list of words and makes a query link to each separately"""
         from trac.ticket.query import QueryModule
         if not (isinstance(value, basestring) and  # None or other non-splitable
                 self.env.is_component_enabled(QueryModule)):
             return value
-        args = arg_list_to_args(parse_arg_list(self.ticketlink_query))
+        if query is None:
+            query = self.ticketlink_query
+        args = arg_list_to_args(parse_arg_list(query))
         items = []
         for i, word in enumerate(re.split(r'([;,\s]+)', value)):
             if i % 2:
@@ -1494,7 +1496,7 @@ class TicketModule(Component):
 
     def _prepare_fields(self, req, ticket, field_changes=None):
         context = web_context(req, ticket.resource)
-        fields = []
+        fields = TicketFieldList()
         for field in ticket.fields:
             name = field['name']
             type_ = field['type']
@@ -1506,8 +1508,10 @@ class TicketModule(Component):
             field.setdefault('editable', True)
 
             # enable a link to custom query for all choice fields
+            ticketlink_query = field.get('ticketlink_query')
             if type_ not in ['text', 'textarea', 'time']:
-                field['rendered'] = self._query_link(req, name, ticket[name])
+                field['rendered'] = self._query_link(req, name, ticket[name],
+                                                     query=ticketlink_query)
 
             # per field settings
             if name in ('summary', 'reporter', 'description', 'owner',
@@ -1582,15 +1586,19 @@ class TicketModule(Component):
             elif type_ == 'checkbox':
                 value = ticket[name]
                 if value in ('1', '0'):
-                    field['rendered'] = self._query_link(req, name, value,
-                                _("yes") if value == '1' else _("no"))
+                    text = _("yes") if value == '1' else _("no")
+                    field['rendered'] = \
+                            self._query_link(req, name, value, text,
+                                             query=ticketlink_query)
             elif type_ == 'text':
                 if field.get('format') == 'reference':
-                    field['rendered'] = self._query_link(req, name,
-                                                         ticket[name])
+                    field['rendered'] = \
+                            self._query_link(req, name, ticket[name],
+                                             query=ticketlink_query)
                 elif field.get('format') == 'list':
-                    field['rendered'] = self._query_link_words(context, name,
-                                                               ticket[name])
+                    field['rendered'] = \
+                            self._query_link_words(context, name, ticket[name],
+                                                   query=ticketlink_query)
             elif type_ == 'time':
                 value = ticket[name]
                 field['timevalue'] = value
@@ -1622,7 +1630,6 @@ class TicketModule(Component):
         # -- Ticket fields
 
         fields = self._prepare_fields(req, ticket, field_changes)
-        fields_map = {field['name']: i for i, field in enumerate(fields)}
 
         # -- Ticket Change History
 
@@ -1717,8 +1724,7 @@ class TicketModule(Component):
                     class_=chrome.author_class(req, user))
         data.update({
             'context': context, 'conflicts': conflicts,
-            'fields': fields, 'fields_map': fields_map,
-            'changes': changes, 'replies': replies,
+            'fields': fields, 'changes': changes, 'replies': replies,
             'attachments': AttachmentModule(self.env).attachment_data(context),
             'action_controls': action_controls, 'action': selected_action,
             'change_preview': change_preview, 'closetime': closetime,
